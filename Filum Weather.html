@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>朝阳 天气 — Filum Weather</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+    #root { min-height: 100vh; }
+    ::-webkit-scrollbar { width: 3px; height: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { border-radius: 2px; }
+    input, button { font-family: inherit; }
+    .hide-scroll::-webkit-scrollbar { display: none; }
+    .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+    @media (hover: hover) {
+      .nav-btn:hover { opacity: 0.8; }
+      .icon-btn:hover { opacity: 0.7; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef, createContext, useContext } = React;
+
+/* ── THEME TOKENS ──────────────────────────────────────── */
+const DARK = {
+  bg:        'oklch(13% 0.025 255)',
+  bg2:       'oklch(17% 0.027 255)',
+  surface:   'oklch(19.5% 0.025 255)',
+  surface2:  'oklch(23% 0.024 255)',
+  border:    'oklch(27% 0.022 255)',
+  borderSub: 'oklch(21% 0.020 255)',
+  text:      'oklch(91% 0.008 255)',
+  textSec:   'oklch(60% 0.018 255)',
+  textTer:   'oklch(42% 0.014 255)',
+  amber:     'oklch(76% 0.14 76)',
+  amberDim:  'oklch(56% 0.10 76)',
+  sky:       'oklch(72% 0.14 222)',
+  violet:    'oklch(72% 0.14 292)',
+  green:     'oklch(72% 0.14 148)',
+  red:       'oklch(65% 0.18 28)',
+  headerBg:  'oklch(13% 0.025 255 / 0.88)',
+  scrollThumb: 'oklch(30% 0.02 255)',
+};
+
+const LIGHT = {
+  bg:        'oklch(96% 0.008 255)',
+  bg2:       'oklch(100% 0 0)',
+  surface:   'oklch(100% 0 0)',
+  surface2:  'oklch(95% 0.008 255)',
+  border:    'oklch(87% 0.012 255)',
+  borderSub: 'oklch(91% 0.010 255)',
+  text:      'oklch(17% 0.025 255)',
+  textSec:   'oklch(40% 0.020 255)',
+  textTer:   'oklch(58% 0.015 255)',
+  amber:     'oklch(62% 0.16 70)',
+  amberDim:  'oklch(52% 0.12 70)',
+  sky:       'oklch(52% 0.16 222)',
+  violet:    'oklch(52% 0.16 292)',
+  green:     'oklch(50% 0.16 148)',
+  red:       'oklch(52% 0.18 28)',
+  headerBg:  'oklch(97% 0.008 255 / 0.92)',
+  scrollThumb: 'oklch(78% 0.012 255)',
+};
+
+const ThemeCtx = createContext({ T: DARK, dark: true, toggle: () => {} });
+const useTheme = () => useContext(ThemeCtx);
+
+/* ── RESPONSIVE ────────────────────────────────────────── */
+function useWidth() {
+  const [w, setW] = useState(window.innerWidth);
+  useEffect(() => {
+    const handler = () => setW(window.innerWidth);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return w;
+}
+
+/* ── DATA ──────────────────────────────────────────────── */
+const WX = {
+  location:'朝阳', city:'北京市', temp:23, feelsLike:21,
+  condition:'阴', humidity:51, wind:12, windDir:'东南',
+  visibility:10, pressure:1013, uv:2, dewPoint:12, cloud:88, aqi:48,
+  sunrise:'05:23', sunset:'19:01', daylight:'13时38分',
+};
+
+const HOURLY = [
+  {h:'06',t:16,pop:5},{h:'07',t:17,pop:5},{h:'08',t:18,pop:8},
+  {h:'09',t:19,pop:10},{h:'10',t:21,pop:10},{h:'11',t:22,pop:8},
+  {h:'12',t:23,pop:5},{h:'13',t:24,pop:5},{h:'14',t:24,pop:5},
+  {h:'15',t:23,pop:5},{h:'16',t:22,pop:8},{h:'17',t:21,pop:10},
+  {h:'18',t:20,pop:12},{h:'19',t:18,pop:15},{h:'20',t:17,pop:20},
+  {h:'21',t:16,pop:18},{h:'22',t:15,pop:15},{h:'23',t:14,pop:10},
+];
+
+const FORECAST = [
+  {day:'今天',icon:'☁️',high:24,low:14,desc:'阴',pop:5},
+  {day:'周六',icon:'⛅',high:26,low:15,desc:'多云',pop:10},
+  {day:'周日',icon:'🌧️',high:21,low:13,desc:'小雨',pop:75},
+  {day:'周一',icon:'🌦️',high:19,low:11,desc:'阵雨',pop:60},
+  {day:'周二',icon:'🌤️',high:22,low:12,desc:'少云',pop:15},
+  {day:'周三',icon:'☀️',high:27,low:14,desc:'晴',pop:2},
+  {day:'周四',icon:'☀️',high:29,low:16,desc:'晴',pop:0},
+];
+
+const TERMS24 = [
+  {n:'小寒',d:'1/5'},{n:'大寒',d:'1/20'},{n:'立春',d:'2/3'},{n:'雨水',d:'2/18'},
+  {n:'惊蛰',d:'3/5'},{n:'春分',d:'3/20'},{n:'清明',d:'4/4'},{n:'谷雨',d:'4/20'},
+  {n:'立夏',d:'5/5'},{n:'小满',d:'5/21'},{n:'芒种',d:'6/5'},{n:'夏至',d:'6/21'},
+  {n:'小暑',d:'7/7'},{n:'大暑',d:'7/22'},{n:'立秋',d:'8/7'},{n:'处暑',d:'8/22'},
+  {n:'白露',d:'9/7'},{n:'秋分',d:'9/22'},{n:'寒露',d:'10/8'},{n:'霜降',d:'10/23'},
+  {n:'立冬',d:'11/7'},{n:'小雪',d:'11/22'},{n:'大雪',d:'12/7'},{n:'冬至',d:'12/21'},
+];
+
+/* ── BASE COMPONENTS ───────────────────────────────────── */
+function Card({ children, style, accentColor }) {
+  const { T } = useTheme();
+  return (
+    <div style={{
+      background: T.surface,
+      border: `1px solid ${accentColor ? accentColor + '30' : T.border}`,
+      borderRadius: 16, padding: '18px 20px', ...style,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  const { T } = useTheme();
+  return (
+    <div style={{ fontSize: 10.5, letterSpacing:'0.08em', textTransform:'uppercase', color: T.textTer, marginBottom: 14, fontWeight: 500 }}>
+      {children}
+    </div>
+  );
+}
+
+function StatPill({ label, value, unit, sub, color }) {
+  const { T } = useTheme();
+  return (
+    <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderRadius: 12, padding: '13px 15px' }}>
+      <div style={{ fontSize: 10, color: T.textTer, letterSpacing:'0.07em', textTransform:'uppercase', marginBottom: 8 }}>{label}</div>
+      <div style={{ display:'flex', alignItems:'baseline', gap: 3 }}>
+        <span style={{ fontSize: 24, fontWeight: 300, letterSpacing:'-0.04em', color: color || T.text, fontFamily:'DM Mono,monospace' }}>{value}</span>
+        {unit && <span style={{ fontSize: 11, color: T.textTer }}>{unit}</span>}
+      </div>
+      {sub && <div style={{ fontSize: 10.5, color: T.textTer, marginTop: 5 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/* ── CHARTS ────────────────────────────────────────────── */
+function HourlySparkline({ data, height = 100, now = 15 }) {
+  const { T } = useTheme();
+  const W = 420, H = height;
+  const pad = { t:22, b:26, l:6, r:6 };
+  const temps = data.map(d => d.t);
+  const tMin = Math.min(...temps) - 3, tMax = Math.max(...temps) + 3;
+  const n = data.length;
+  const xs = data.map((_, i) => pad.l + (i / (n-1)) * (W - pad.l - pad.r));
+  const ys = temps.map(t => pad.t + (1 - (t - tMin) / (tMax - tMin)) * (H - pad.t - pad.b));
+  const line = xs.map((x, i) => `${i===0?'M':'L'}${x.toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+  const area = `${line} L${xs[n-1].toFixed(1)},${H-pad.b} L${xs[0].toFixed(1)},${H-pad.b} Z`;
+  const nowIdx = data.findIndex(d => parseInt(d.h) === now);
+  const showLabels = new Set([0, data.findIndex(d => d.t === Math.max(...temps)), n-1]);
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height: H }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="sc_areaG" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={T.violet} stopOpacity="0.25"/>
+          <stop offset="100%" stopColor={T.violet} stopOpacity="0"/>
+        </linearGradient>
+        <linearGradient id="sc_lineG" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={T.violet} stopOpacity="0.25"/>
+          <stop offset="40%" stopColor={T.violet} stopOpacity="1"/>
+          <stop offset="60%" stopColor={T.violet} stopOpacity="1"/>
+          <stop offset="100%" stopColor={T.violet} stopOpacity="0.25"/>
+        </linearGradient>
+      </defs>
+      <path d={area} fill="url(#sc_areaG)"/>
+      <path d={line} fill="none" stroke="url(#sc_lineG)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+      {data.map((d, i) => i % 3 === 0 && (
+        <text key={i} x={xs[i]} y={H-5} textAnchor="middle" fontSize="8.5"
+          fill={parseInt(d.h)===now ? T.amber : T.textTer} fontFamily="DM Mono,monospace">{d.h}</text>
+      ))}
+      {[...showLabels].map(i => (
+        <text key={i} x={xs[i]} y={ys[i]-6} textAnchor="middle" fontSize="9.5"
+          fill={T.violet} fontFamily="DM Mono,monospace">{data[i].t}°</text>
+      ))}
+      {nowIdx >= 0 && <>
+        <line x1={xs[nowIdx]} y1={pad.t-6} x2={xs[nowIdx]} y2={H-pad.b}
+          stroke={T.amber} strokeWidth="1" strokeDasharray="3,3" opacity="0.65"/>
+        <circle cx={xs[nowIdx]} cy={ys[nowIdx]} r="4" fill={T.amber}/>
+        <circle cx={xs[nowIdx]} cy={ys[nowIdx]} r="8" fill={T.amber} opacity="0.15"/>
+      </>}
+    </svg>
+  );
+}
+
+function SunArc({ sunrise, sunset, now }) {
+  const { T } = useTheme();
+  const toM = s => { const [h,m] = s.split(':').map(Number); return h*60+m; };
+  const progress = Math.max(0, Math.min(1, (toM(now)-toM(sunrise))/(toM(sunset)-toM(sunrise))));
+  const W=280, H=110, cx=W/2, cy=H-8, rx=118, ry=88;
+  const ang = Math.PI + progress * Math.PI;
+  const sx = cx + rx * Math.cos(ang), sy = cy + ry * Math.sin(ang);
+  const arcFull = `M ${cx-rx} ${cy} A ${rx} ${ry} 0 0 1 ${cx+rx} ${cy}`;
+  const arcLen = Math.PI * Math.sqrt((rx*rx+ry*ry)/2);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', maxWidth:280, height:H }}>
+      <defs>
+        <linearGradient id="sc_arcG" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={T.amber} stopOpacity="0.5"/>
+          <stop offset="50%" stopColor={T.amber}/>
+          <stop offset="100%" stopColor={T.red} stopOpacity="0.7"/>
+        </linearGradient>
+      </defs>
+      <path d={arcFull} fill="none" stroke={T.borderSub} strokeWidth="1.5"/>
+      <path d={arcFull} fill="none" stroke="url(#sc_arcG)" strokeWidth="2" strokeDasharray={`${progress*arcLen} 9999`}/>
+      <line x1={cx-rx-12} y1={cy} x2={cx+rx+12} y2={cy} stroke={T.borderSub} strokeWidth="1"/>
+      <circle cx={sx} cy={sy} r="6" fill={T.amber}/>
+      <circle cx={sx} cy={sy} r="11" fill={T.amber} opacity="0.18"/>
+      <text x={cx-rx} y={cy+15} textAnchor="middle" fontSize="9.5" fill={T.textTer} fontFamily="DM Mono,monospace">{sunrise}</text>
+      <text x={cx+rx} y={cy+15} textAnchor="middle" fontSize="9.5" fill={T.textTer} fontFamily="DM Mono,monospace">{sunset}</text>
+      <text x={cx} y={cy-10} textAnchor="middle" fontSize="9" fill={T.amber} fontFamily="DM Mono,monospace" opacity="0.8">15:26</text>
+    </svg>
+  );
+}
+
+function ForecastRow({ item, minLow, maxHigh }) {
+  const { T } = useTheme();
+  const w = useWidth();
+  const isMobile = w < 480;
+  const range = maxHigh - minLow;
+  const left = (item.low-minLow)/range, width2 = (item.high-item.low)/range;
+  return (
+    <div style={{
+      display:'grid',
+      gridTemplateColumns: isMobile ? '3rem 2rem 1fr 2.4rem 2.4rem' : '3.2rem 2.2rem 1fr 2.8rem 2.8rem 2.4rem',
+      alignItems:'center', gap: isMobile ? 8 : 10, padding:'11px 0',
+      borderBottom:`1px solid ${T.borderSub}`,
+    }}>
+      <span style={{ fontSize:12.5, color:T.textSec }}>{item.day}</span>
+      <span style={{ fontSize:17, textAlign:'center' }}>{item.icon}</span>
+      <div style={{ position:'relative', height:4, background:T.surface2, borderRadius:2 }}>
+        <div style={{ position:'absolute', left:`${left*100}%`, width:`${width2*100}%`, height:'100%', borderRadius:2, background:`linear-gradient(90deg,${T.sky},${T.amber})` }}/>
+      </div>
+      <span style={{ fontSize:12, color:T.textSec, textAlign:'right', fontFamily:'DM Mono,monospace' }}>{item.low}°</span>
+      <span style={{ fontSize:12.5, fontWeight:500, textAlign:'right', fontFamily:'DM Mono,monospace' }}>{item.high}°</span>
+      {!isMobile && <span style={{ fontSize:10.5, color: item.pop>30?T.sky:T.textTer, textAlign:'right', fontFamily:'DM Mono,monospace' }}>{item.pop}%</span>}
+    </div>
+  );
+}
+
+/* ── PAGES ─────────────────────────────────────────────── */
+function TodayPage() {
+  const { T } = useTheme();
+  const w = useWidth();
+  const isMobile = w < 600;
+  const statsCols = w < 380 ? 2 : 3;
+
+  const indices = [
+    { label:'穿衣', value:'舒适', desc:'轻薄外套或长袖', color:T.green, score:3 },
+    { label:'运动', value:'适宜', desc:'户外运动良好', color:T.sky, score:4 },
+    { label:'洗车', value:'适宜', desc:'降雨概率低', color:T.amber, score:4 },
+    { label:'紫外线', value:'弱', desc:'无需特别防晒', color:T.violet, score:2 },
+  ];
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      {/* Hero */}
+      <div style={{ background:T.bg2, border:`1px solid ${T.border}`, borderRadius:20, padding: isMobile ? '20px 18px 16px' : '26px 26px 20px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-60, right:-60, width:220, height:220, borderRadius:'50%', background:`radial-gradient(circle, oklch(72% 0.14 292 / 0.10), transparent 70%)`, pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-30, left:-30, width:160, height:160, borderRadius:'50%', background:`radial-gradient(circle, ${T.amber} / 0.06, transparent 70%)`, pointerEvents:'none' }}/>
+
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+          <div>
+            <div style={{ fontSize:11.5, color:T.textTer, letterSpacing:'0.05em', marginBottom:8 }}>朝阳 · 北京市</div>
+            <div style={{ display:'flex', alignItems:'flex-start', gap:2, lineHeight:1 }}>
+              <span style={{ fontSize: isMobile ? 72 : 96, fontWeight:200, letterSpacing:'-0.07em', color:T.text, fontFamily:'DM Mono,monospace' }}>{WX.temp}</span>
+              <span style={{ fontSize: isMobile ? 24 : 32, color:T.textSec, marginTop: isMobile ? 10 : 14, fontWeight:300 }}>°C</span>
+            </div>
+            <div style={{ fontSize:15, color:T.textSec, marginTop:2 }}>{WX.condition}</div>
+            <div style={{ fontSize:11.5, color:T.textTer, marginTop:5 }}>体感 {WX.feelsLike}°C · 露点 {WX.dewPoint}°C</div>
+          </div>
+          <div style={{ textAlign:'right', display:'flex', flexDirection:'column', alignItems:'flex-end', gap:10 }}>
+            <span style={{ fontSize: isMobile ? 40 : 52 }}>☁️</span>
+            <div style={{ background:`oklch(72% 0.13 148 / 0.12)`, border:`1px solid oklch(72% 0.13 148 / 0.28)`, color:T.green, borderRadius:20, padding:'3px 11px', fontSize:11, fontFamily:'DM Mono,monospace' }}>AQI {WX.aqi} 优</div>
+          </div>
+        </div>
+
+        <div style={{ display:'flex', gap: isMobile ? 14 : 20, marginTop:18, paddingTop:16, borderTop:`1px solid ${T.borderSub}`, flexWrap:'wrap' }}>
+          {[{l:'湿度',v:`${WX.humidity}%`},{l:'风速',v:`${WX.wind} ${WX.windDir}`},{l:'能见度',v:`${WX.visibility} km`},{l:'气压',v:`${WX.pressure} hPa`}].map(s => (
+            <div key={s.l}>
+              <div style={{ fontSize:9.5, color:T.textTer, letterSpacing:'0.06em', textTransform:'uppercase', marginBottom:3 }}>{s.l}</div>
+              <div style={{ fontSize:13, fontFamily:'DM Mono,monospace', color:T.textSec }}>{s.v}</div>
+            </div>
+          ))}
+          <div style={{ marginLeft:'auto', fontSize:10, color:T.textTer, fontFamily:'DM Mono,monospace', alignSelf:'flex-end' }}>更新 15:26</div>
+        </div>
+      </div>
+
+      {/* Hourly chart */}
+      <Card>
+        <SectionLabel>今日逐小时气温</SectionLabel>
+        <HourlySparkline data={HOURLY} height={isMobile ? 88 : 100} now={15}/>
+      </Card>
+
+      {/* Stats grid */}
+      <div style={{ display:'grid', gridTemplateColumns:`repeat(${statsCols}, 1fr)`, gap:10 }}>
+        <StatPill label="湿度" value={WX.humidity} unit="%" sub="适中" color={T.sky}/>
+        <StatPill label="风速" value={WX.wind} unit=" km/h" sub={`${WX.windDir}风`} color={T.violet}/>
+        <StatPill label="能见度" value={WX.visibility} unit=" km" sub="良好"/>
+        <StatPill label="气压" value={WX.pressure} unit=" hPa" sub="正常"/>
+        <StatPill label="云量" value={WX.cloud} unit="%" sub="阴天" color={T.textSec}/>
+        <StatPill label="紫外线" value={WX.uv} unit="" sub="指数低" color={T.green}/>
+      </div>
+
+      {/* Sunrise */}
+      <Card>
+        <SectionLabel>日出 · 日落</SectionLabel>
+        <div style={{ display:'flex', alignItems:'center', gap:20, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:180, display:'flex', justifyContent:'center' }}>
+            <SunArc sunrise={WX.sunrise} sunset={WX.sunset} now="15:26"/>
+          </div>
+          <div style={{ display:'flex', flexDirection: isMobile ? 'row' : 'column', flexWrap:'wrap', gap: isMobile ? 16 : 14 }}>
+            {[{l:'日出',v:WX.sunrise,c:T.amber},{l:'日落',v:WX.sunset,c:T.red},{l:'白昼',v:WX.daylight,c:T.textSec},{l:'黄金时刻',v:'18:22',c:T.amberDim}].map(s => (
+              <div key={s.l}>
+                <div style={{ fontSize:10, color:T.textTer, marginBottom:3 }}>{s.l}</div>
+                <div style={{ fontSize:18, fontFamily:'DM Mono,monospace', color:s.c, fontWeight:300 }}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+
+      {/* Life indices */}
+      <Card>
+        <SectionLabel>生活指数</SectionLabel>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+          {indices.map(idx => (
+            <div key={idx.label} style={{ display:'flex', flexDirection:'column', gap:7 }}>
+              <div style={{ display:'flex', justifyContent:'space-between' }}>
+                <span style={{ fontSize:11.5, color:T.textSec }}>{idx.label}</span>
+                <span style={{ fontSize:12, fontWeight:500, color:idx.color }}>{idx.value}</span>
+              </div>
+              <div style={{ height:3, background:T.surface2, borderRadius:2, overflow:'hidden' }}>
+                <div style={{ height:'100%', width:`${(idx.score/5)*100}%`, background:idx.color, borderRadius:2 }}/>
+              </div>
+              <span style={{ fontSize:10.5, color:T.textTer }}>{idx.desc}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ForecastPage() {
+  const { T } = useTheme();
+  const highs = FORECAST.map(f => f.high), lows = FORECAST.map(f => f.low);
+  const minLow = Math.min(...lows), maxHigh = Math.max(...highs);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <Card>
+        <SectionLabel>7 天预报</SectionLabel>
+        {FORECAST.map((f,i) => <ForecastRow key={i} item={f} minLow={minLow} maxHigh={maxHigh}/>)}
+      </Card>
+      <div style={{ background:`oklch(17% 0.03 222)`, border:`1px solid oklch(72% 0.14 222 / 0.25)`, borderRadius:14, padding:'16px 20px' }}>
+        <div style={{ fontSize:10, color:T.sky, letterSpacing:'0.08em', textTransform:'uppercase', marginBottom:10 }}>降水预警</div>
+        <div style={{ fontSize:14, color:T.textSec, lineHeight:1.7 }}>
+          <span style={{ color:T.sky }}>周日</span> 降雨概率 <span style={{ fontFamily:'DM Mono,monospace', color:T.sky }}>75%</span>，预计累计降水 <span style={{ fontFamily:'DM Mono,monospace', color:T.text }}>8–15 mm</span>。出行注意携带雨具。
+        </div>
+      </div>
+      <Card style={{ textAlign:'center', padding:'22px 20px' }}>
+        <div style={{ fontSize:11, color:T.textTer, marginBottom:6 }}>16 天长期预报</div>
+        <div style={{ fontSize:13, color:T.textSec, lineHeight:1.7 }}>
+          未来两周总体偏暖，平均气温较常年偏高 <span style={{ fontFamily:'DM Mono,monospace', color:T.amber }}>+1.8°C</span>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function HourlyPage() {
+  const { T } = useTheme();
+  const w = useWidth();
+  const isMobile = w < 500;
+  const [hovered, setHovered] = useState(null);
+  const maxT = Math.max(...HOURLY.map(h => h.t));
+  const minT = Math.min(...HOURLY.map(h => h.t));
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <Card>
+        <SectionLabel>今日逐小时气温走势</SectionLabel>
+        <HourlySparkline data={HOURLY} height={isMobile ? 90 : 120} now={15}/>
+      </Card>
+      <Card style={{ padding:0, overflow:'hidden' }}>
+        <div style={{ padding:'14px 20px 10px', borderBottom:`1px solid ${T.borderSub}` }}>
+          <div style={{ display:'grid', gridTemplateColumns: isMobile ? '4rem 1fr 4rem' : '4rem 1fr 3rem 4rem 3.5rem', gap:12 }}>
+            {(isMobile ? ['时间','气温','温度'] : ['时间','气温分布','','温度','雨概率']).map((h,i) => (
+              <span key={i} style={{ fontSize:9.5, color:T.textTer, textAlign: i>0?'right':'left', textTransform:'uppercase', letterSpacing:'0.06em' }}>{h}</span>
+            ))}
+          </div>
+        </div>
+        {HOURLY.map((h, i) => {
+          const isCur = parseInt(h.h) === 15;
+          return (
+            <div key={i}
+              onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}
+              style={{
+                display:'grid', gridTemplateColumns: isMobile ? '4rem 1fr 4rem' : '4rem 1fr 3rem 4rem 3.5rem',
+                alignItems:'center', gap:12, padding:'11px 20px',
+                background: isCur ? T.surface2 : hovered===i ? T.surface2 : 'transparent',
+                borderBottom: i<HOURLY.length-1 ? `1px solid ${T.borderSub}` : 'none',
+                transition:'background 0.12s',
+              }}>
+              <span style={{ fontFamily:'DM Mono,monospace', fontSize:12.5, color: isCur ? T.amber : T.textSec }}>
+                {h.h}:00
+              </span>
+              {!isMobile && (
+                <div style={{ height:3, background:T.surface2, borderRadius:2, overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${((h.t-minT)/(maxT-minT+1))*100}%`, background: isCur ? T.amber : T.violet, borderRadius:2 }}/>
+                </div>
+              )}
+              {isMobile && <div/>}
+              {!isMobile && <span/>}
+              <span style={{ fontFamily:'DM Mono,monospace', fontSize:13.5, textAlign:'right', fontWeight: h.t===maxT?600:300, color: h.t===maxT ? T.amber : T.text }}>
+                {h.t}°C
+              </span>
+              {!isMobile && <span style={{ fontFamily:'DM Mono,monospace', fontSize:11, textAlign:'right', color: h.pop>30?T.sky:T.textTer }}>{h.pop}%</span>}
+            </div>
+          );
+        })}
+      </Card>
+    </div>
+  );
+}
+
+function HistoryPage() {
+  const { T } = useTheme();
+  const data26 = [3,6,12,18,23,28,30,28,23,16,8,2];
+  const data25 = [2,5,11,17,22,27,29,27,22,15,7,1];
+  const months = ['1','2','3','4','5','6','7','8','9','10','11','12'];
+  const W=420, H=140, pad={t:18,b:22,l:14,r:14}, n=12, tMin=-2, tMax=34;
+  const xs = data26.map((_,i) => pad.l + (i/(n-1))*(W-pad.l-pad.r));
+  const ys26 = data26.map(t => pad.t + (1-(t-tMin)/(tMax-tMin))*(H-pad.t-pad.b));
+  const ys25 = data25.map(t => pad.t + (1-(t-tMin)/(tMax-tMin))*(H-pad.t-pad.b));
+  const line26 = xs.map((x,i) => `${i===0?'M':'L'}${x.toFixed(1)},${ys26[i].toFixed(1)}`).join(' ');
+  const line25 = xs.map((x,i) => `${i===0?'M':'L'}${x.toFixed(1)},${ys25[i].toFixed(1)}`).join(' ');
+  const area26 = `${line26} L${xs[n-1].toFixed(1)},${H-pad.b} L${xs[0].toFixed(1)},${H-pad.b} Z`;
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <Card>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <SectionLabel>月均气温对比</SectionLabel>
+          <div style={{ display:'flex', gap:14, fontSize:11 }}>
+            {[['2026',T.violet],['2025',T.amber]].map(([y,c]) => (
+              <span key={y} style={{ display:'flex', alignItems:'center', gap:5, color:T.textTer }}>
+                <span style={{ width:16, height:2, background:c, display:'inline-block', borderRadius:1, opacity: y==='2025'?0.5:1 }}/>
+                {y}
+              </span>
+            ))}
+          </div>
+        </div>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width:'100%', height:H }} preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="sc_histG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={T.violet} stopOpacity="0.18"/>
+              <stop offset="100%" stopColor={T.violet} stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d={area26} fill="url(#sc_histG)"/>
+          <path d={line25} fill="none" stroke={T.amber} strokeWidth="1.2" strokeDasharray="5,3" opacity="0.5"/>
+          <path d={line26} fill="none" stroke={T.violet} strokeWidth="1.8" strokeLinecap="round"/>
+          <circle cx={xs[3]} cy={ys26[3]} r="4" fill={T.amber}/>
+          <circle cx={xs[3]} cy={ys26[3]} r="9" fill={T.amber} opacity="0.15"/>
+          {months.map((m,i) => (
+            <text key={i} x={xs[i]} y={H-4} textAnchor="middle" fontSize="8.5" fill={T.textTer} fontFamily="DM Mono,monospace">{m}月</text>
+          ))}
+        </svg>
+      </Card>
+      <Card>
+        <SectionLabel>本月对比 (4月)</SectionLabel>
+        {[
+          {label:'平均气温',v26:'18.4°C',v25:'17.1°C',good:true},
+          {label:'最高气温',v26:'27°C',v25:'25°C',good:true},
+          {label:'降水量',v26:'32 mm',v25:'28 mm',good:false},
+          {label:'晴天数',v26:'12 天',v25:'10 天',good:true},
+        ].map((row,i) => (
+          <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 5.5rem 5.5rem', gap:12, padding:'11px 0', borderBottom: i<3?`1px solid ${T.borderSub}`:'none', alignItems:'center' }}>
+            <span style={{ fontSize:13, color:T.textSec }}>{row.label}</span>
+            <span style={{ fontSize:13, fontFamily:'DM Mono,monospace', color: row.good?T.green:T.sky, textAlign:'right' }}>{row.v26}</span>
+            <span style={{ fontSize:12, fontFamily:'DM Mono,monospace', color:T.textTer, textAlign:'right' }}>{row.v25}</span>
+          </div>
+        ))}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 5.5rem 5.5rem', gap:12, paddingTop:8 }}>
+          <span/>
+          {['2026','2025'].map(y => <span key={y} style={{ fontSize:10, color:T.textTer, textAlign:'right', fontFamily:'DM Mono,monospace' }}>{y}</span>)}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function SolarTermsPage() {
+  const { T } = useTheme();
+  const w = useWidth();
+  const isMobile = w < 480;
+  const [selected, setSelected] = useState(7);
+  const termDetails = {
+    7: { desc:'谷雨，春雨充沛，雨生百谷。气温升高，降水增多，是播种移苗的好时节。', tags:['均温 18°C','降水增多','农耕要事'] },
+    8: { desc:'立夏，夏季开始，万物并秀。气温明显回升，雷雨渐多，注意防暑。', tags:['均温 22°C','多雷阵雨','防暑开始'] },
+  };
+  const detail = termDetails[selected];
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ background:`linear-gradient(135deg, oklch(16% 0.04 148), oklch(14% 0.03 148))`, border:`1px solid oklch(72% 0.14 148 / 0.22)`, borderRadius:20, padding:'24px' }}>
+        <div style={{ fontSize:10, color:T.green, letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:14 }}>当前节气</div>
+        <div style={{ display:'flex', gap:24, alignItems:'flex-start', flexWrap:'wrap' }}>
+          <div>
+            <div style={{ fontSize: isMobile?42:52, fontWeight:200, letterSpacing:'-0.04em', color:'oklch(82% 0.10 148)' }}>谷雨</div>
+            <div style={{ fontSize:11.5, color:'oklch(55% 0.08 148)', marginTop:6, fontFamily:'DM Mono,monospace' }}>4月20日 — 5月4日</div>
+            <div style={{ fontSize:11.5, color:'oklch(48% 0.07 148)', marginTop:4, fontFamily:'DM Mono,monospace' }}>距立夏 · 11天</div>
+          </div>
+          <div style={{ fontSize:13, color:'oklch(60% 0.08 148)', lineHeight:1.8, paddingTop:4, flex:1, minWidth:140 }}>
+            雨生百谷，春耕正忙。<br/>气温升暖，降水充沛，<br/>万物竞发，一派生机。
+          </div>
+        </div>
+      </div>
+      <Card>
+        <SectionLabel>二十四节气</SectionLabel>
+        <div style={{ display:'grid', gridTemplateColumns: isMobile ? 'repeat(4,1fr)' : 'repeat(6,1fr)', gap:7 }}>
+          {TERMS24.map((t,i) => {
+            const isCur=i===7, isSel=i===selected, isPast=i<7;
+            return (
+              <div key={i} onClick={() => setSelected(i)} style={{
+                textAlign:'center', padding:'9px 4px', borderRadius:10,
+                background: isSel ? (isCur?'oklch(72% 0.14 148 / 0.18)':'oklch(72% 0.14 292 / 0.15)') : 'transparent',
+                border:`1px solid ${isSel?(isCur?'oklch(72% 0.14 148 / 0.4)':'oklch(72% 0.14 292 / 0.4)'):'transparent'}`,
+                cursor:'pointer', transition:'all 0.15s',
+              }}>
+                <div style={{ fontSize:12, color: isCur?T.green:isSel?T.violet:isPast?T.textTer:T.textSec, fontWeight:isCur?600:400 }}>{t.n}</div>
+                <div style={{ fontSize:8.5, color:T.textTer, marginTop:2, fontFamily:'DM Mono,monospace' }}>{t.d}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+      {detail && (
+        <Card accentColor={T.violet}>
+          <SectionLabel>{TERMS24[selected].n} · {TERMS24[selected].d}</SectionLabel>
+          <p style={{ fontSize:13.5, color:T.textSec, lineHeight:1.8, marginBottom:14 }}>{detail.desc}</p>
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+            {detail.tags.map(v => (
+              <div key={v} style={{ background:T.surface2, borderRadius:8, padding:'7px 12px', fontSize:11.5, color:T.textSec }}>{v}</div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ClothingPage() {
+  const { T } = useTheme();
+  const w = useWidth();
+  const isMobile = w < 500;
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ background:`linear-gradient(135deg, oklch(16% 0.035 292), oklch(14% 0.025 255))`, border:`1px solid oklch(72% 0.14 292 / 0.22)`, borderRadius:20, padding:'24px' }}>
+        <div style={{ fontSize:10, color:T.violet, letterSpacing:'0.1em', textTransform:'uppercase', marginBottom:14 }}>AI 穿衣建议</div>
+        <div style={{ display:'flex', alignItems:'center', gap:14, marginBottom:16 }}>
+          <span style={{ fontSize: isMobile?36:40 }}>👔</span>
+          <div>
+            <div style={{ fontSize:22, fontWeight:300, color:T.text }}>舒适</div>
+            <div style={{ fontSize:11.5, color:T.textTer, marginTop:3 }}>23°C · 阴 · 东南风 12 km/h</div>
+          </div>
+        </div>
+        <div style={{ fontSize:13.5, color:T.textSec, lineHeight:1.85 }}>
+          今日气温适中，建议穿着轻薄长袖或薄外套。上午云量较厚，体感偏凉；午后温度升至 23°C，较为舒适。傍晚气温逐渐下降至 18°C，外出时建议携带一件薄外套备用。
+        </div>
+      </div>
+      <Card>
+        <SectionLabel>穿搭参考</SectionLabel>
+        {[{l:'上衣',v:'薄款长袖 / 轻薄夹克'},{l:'下装',v:'休闲裤 / 牛仔裤'},{l:'鞋履',v:'运动鞋 / 休闲鞋'},{l:'配件',v:'无需雨具，可带轻薄防晒'}].map((item,i) => (
+          <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 0', borderBottom: i<3?`1px solid ${T.borderSub}`:'none' }}>
+            <span style={{ fontSize:12.5, color:T.textTer }}>{item.l}</span>
+            <span style={{ fontSize:13, color:T.textSec }}>{item.v}</span>
+          </div>
+        ))}
+      </Card>
+      <Card>
+        <SectionLabel>今日逐时体感</SectionLabel>
+        <div className="hide-scroll" style={{ display:'flex', gap:8, overflowX:'auto', paddingBottom:4 }}>
+          {[6,9,12,15,18,21].map(h => {
+            const d = HOURLY.find(x => parseInt(x.h) === h);
+            const feel = d.t<15?'凉':d.t<20?'微凉':d.t<26?'舒适':'温热';
+            const fc = d.t<15?T.sky:d.t<20?T.violet:d.t<26?T.green:T.amber;
+            return (
+              <div key={h} style={{ flexShrink:0, background:T.surface2, borderRadius:10, padding:'10px 14px', textAlign:'center', minWidth:58, border: h===15?`1px solid ${T.amber}30`:`1px solid transparent` }}>
+                <div style={{ fontSize:10, color:T.textTer, fontFamily:'DM Mono,monospace', marginBottom:5 }}>{h}:00</div>
+                <div style={{ fontSize:15, fontFamily:'DM Mono,monospace', fontWeight:300 }}>{d.t}°</div>
+                <div style={{ fontSize:10, color:fc, marginTop:4 }}>{feel}</div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function ComparePage() {
+  const { T } = useTheme();
+  const cities = [{name:'北京',temp:23,cond:'阴',color:T.violet},{name:'上海',temp:26,cond:'多云',color:T.sky}];
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        {cities.map(c => (
+          <div key={c.name} style={{ background:T.bg2, border:`1px solid ${T.border}`, borderRadius:16, padding:'20px' }}>
+            <div style={{ fontSize:11, color:T.textTer, marginBottom:8 }}>{c.name}</div>
+            <div style={{ fontSize:48, fontWeight:200, fontFamily:'DM Mono,monospace', color:c.color, letterSpacing:'-0.05em' }}>{c.temp}°</div>
+            <div style={{ fontSize:12.5, color:T.textSec, marginTop:4 }}>{c.cond}</div>
+          </div>
+        ))}
+      </div>
+      <Card>
+        <SectionLabel>对比详情</SectionLabel>
+        {[{l:'气温',a:'23°C',b:'26°C',w:1},{l:'湿度',a:'51%',b:'72%',w:0},{l:'能见度',a:'10 km',b:'7 km',w:0},{l:'风速',a:'12 km/h',b:'9 km/h',w:1},{l:'AQI',a:'48',b:'62',w:0}].map((row,i) => (
+          <div key={i} style={{ display:'grid', gridTemplateColumns:'1fr 5rem 5rem', gap:10, padding:'11px 0', borderBottom: i<4?`1px solid ${T.borderSub}`:'none', alignItems:'center' }}>
+            <span style={{ fontSize:12.5, color:T.textTer }}>{row.l}</span>
+            <span style={{ fontSize:13, fontFamily:'DM Mono,monospace', textAlign:'right', color: row.w===0?T.green:T.textSec }}>{row.a}</span>
+            <span style={{ fontSize:13, fontFamily:'DM Mono,monospace', textAlign:'right', color: row.w===1?T.green:T.textSec }}>{row.b}</span>
+          </div>
+        ))}
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 5rem 5rem', gap:10, paddingTop:8 }}>
+          <span/>
+          {cities.map(c => <span key={c.name} style={{ fontSize:10, color:T.textTer, textAlign:'right' }}>{c.name}</span>)}
+        </div>
+      </Card>
+      <Card style={{ textAlign:'center', padding:'22px 20px' }}>
+        <div style={{ fontSize:12.5, color:T.textTer, lineHeight:1.7, marginBottom:12 }}>搜索第三座城市加入对比</div>
+        <div style={{ display:'flex', alignItems:'center', gap:8, background:T.surface2, border:`1px solid ${T.border}`, borderRadius:8, padding:'8px 14px', maxWidth:220, margin:'0 auto' }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color:T.textTer, flexShrink:0 }}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+          <span style={{ fontSize:12.5, color:T.textTer }}>搜索城市…</span>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function RadarPage() {
+  const { T } = useTheme();
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+      <Card style={{ padding:0, overflow:'hidden' }}>
+        <div style={{ height:300, background:T.bg2, display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:12, position:'relative' }}>
+          <svg style={{ position:'absolute', inset:0, width:'100%', height:'100%', opacity:0.15 }} viewBox="0 0 300 300" preserveAspectRatio="none">
+            {[0,1,2,3,4,5].map(i=><line key={i} x1={i*60} y1="0" x2={i*60} y2="300" stroke={T.border} strokeWidth="1"/>)}
+            {[0,1,2,3,4,5].map(i=><line key={i} x1="0" y1={i*60} x2="300" y2={i*60} stroke={T.border} strokeWidth="1"/>)}
+          </svg>
+          <div style={{ fontSize:32, opacity:0.3 }}>🛰️</div>
+          <div style={{ fontSize:13, color:T.textTer, textAlign:'center', lineHeight:1.6 }}>
+            雷达地图<br/><span style={{ fontSize:11 }}>需要网络连接 · 彩云天气</span>
+          </div>
+          <div style={{ display:'flex', gap:8, marginTop:4 }}>
+            {[['弱',T.green],['中',T.amber],['强',T.red]].map(([l,c]) => (
+              <div key={l} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                <div style={{ width:10, height:10, borderRadius:2, background:c, opacity:0.7 }}/>
+                <span style={{ fontSize:10, color:T.textTer }}>{l}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{ padding:'14px 20px', borderTop:`1px solid ${T.borderSub}` }}>
+          <div style={{ fontSize:12, color:T.textSec }}>北京周边当前无明显降水回波</div>
+          <div style={{ fontSize:11, color:T.textTer, marginTop:4, fontFamily:'DM Mono,monospace' }}>15:26 更新</div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ── NAV ───────────────────────────────────────────────── */
+const NAV = [
+  {id:'today',label:'今日',icon:'○'},
+  {id:'clothing',label:'穿衣',icon:'◎'},
+  {id:'forecast',label:'预报',icon:'▦'},
+  {id:'hourly',label:'逐时',icon:'◷'},
+  {id:'history',label:'历史',icon:'↗'},
+  {id:'compare',label:'对比',icon:'⊟'},
+  {id:'radar',label:'雷达',icon:'◉'},
+  {id:'terms',label:'节气',icon:'✦'},
+];
+const MOBILE_NAV = ['today','forecast','hourly','terms'];
+
+const PAGES = { today:TodayPage, clothing:ClothingPage, forecast:ForecastPage, hourly:HourlyPage, history:HistoryPage, compare:ComparePage, radar:RadarPage, terms:SolarTermsPage };
+
+/* ── MOON/SUN TOGGLE ───────────────────────────────────── */
+function ThemeToggle({ dark, onToggle }) {
+  const { T } = useTheme();
+  return (
+    <button onClick={onToggle} className="icon-btn" title={dark ? '切换亮色' : '切换暗色'}
+      style={{ background: T.surface2, border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 10px', cursor:'pointer', display:'flex', alignItems:'center', gap:6, transition:'all 0.2s', flexShrink:0 }}>
+      <span style={{ fontSize:14, lineHeight:1 }}>{dark ? '☀️' : '🌙'}</span>
+      <span style={{ fontSize:11, color:T.textSec, fontFamily:'DM Mono,monospace' }}>{dark ? '亮色' : '暗色'}</span>
+    </button>
+  );
+}
+
+/* ── APP ───────────────────────────────────────────────── */
+function App() {
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('fw-dark');
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [page, setPage] = useState('today');
+  const [search, setSearch] = useState('北京');
+  const T = dark ? DARK : LIGHT;
+  const w = useWidth();
+  const isMobile = w < 640;
+  const PageComponent = PAGES[page];
+
+  const toggle = () => {
+    setDark(d => { localStorage.setItem('fw-dark', String(!d)); return !d; });
+  };
+
+  // scroll to top on page change
+  const mainRef = useRef(null);
+  const prevPage = useRef(page);
+  useEffect(() => {
+    if (prevPage.current !== page) {
+      prevPage.current = page;
+      if (mainRef.current) mainRef.current.scrollTop = 0;
+    }
+  }, [page]);
+
+  return (
+    <ThemeCtx.Provider value={{ T, dark, toggle }}>
+      <div style={{ minHeight:'100vh', background:T.bg, color:T.text, display:'flex', flexDirection:'column', transition:'background 0.25s, color 0.25s' }}>
+
+        {/* Header */}
+        <header style={{ position:'sticky', top:0, zIndex:50, background:T.headerBg, backdropFilter:'blur(18px)', WebkitBackdropFilter:'blur(18px)', borderBottom:`1px solid ${T.borderSub}` }}>
+          <div style={{ maxWidth:860, margin:'0 auto', padding: isMobile ? '10px 14px' : '10px 18px' }}>
+
+            {/* Top bar */}
+            <div style={{ display:'flex', alignItems:'center', gap: isMobile ? 8 : 12, marginBottom:10 }}>
+              {/* Logo */}
+              <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                <span style={{ fontSize:16 }}>🌤️</span>
+                <span style={{ fontSize:13.5, fontWeight:600, letterSpacing:'-0.05em', color:T.text }}>filum</span>
+                {!isMobile && <span style={{ fontSize:9.5, color:T.textTer, fontFamily:'DM Mono,monospace', letterSpacing:'0.1em', textTransform:'uppercase' }}>weather</span>}
+              </div>
+              <div style={{ flex:1 }}/>
+
+              {/* Location (desktop only) */}
+              {!isMobile && (
+                <div style={{ fontSize:11.5, color:T.textTer, fontFamily:'DM Mono,monospace', display:'flex', alignItems:'center', gap:4 }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>
+                  </svg>
+                  朝阳·北京市
+                </div>
+              )}
+
+              {/* Search */}
+              <div style={{ display:'flex', alignItems:'center', gap:7, background:T.surface2, border:`1px solid ${T.border}`, borderRadius:8, padding:'6px 12px', minWidth:0 }}>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color:T.textTer, flexShrink:0 }}>
+                  <circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/>
+                </svg>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索城市…"
+                  style={{ background:'none', border:'none', outline:'none', fontSize:12.5, color:T.textSec, width: isMobile ? 70 : 90, minWidth:0 }}/>
+              </div>
+
+              {/* Theme toggle */}
+              <ThemeToggle dark={dark} onToggle={toggle}/>
+
+              {/* Refresh */}
+              <button title="刷新" className="icon-btn" style={{ background:'none', border:'none', cursor:'pointer', color:T.textTer, padding:5, borderRadius:6, display:'flex', transition:'color 0.15s', flexShrink:0 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>
+                  <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Nav pills — top on desktop, hidden on mobile (bottom nav instead) */}
+            {!isMobile && (
+              <nav className="hide-scroll" style={{ display:'flex', gap:5, overflowX:'auto' }}>
+                {NAV.map(item => (
+                  <button key={item.id} onClick={() => setPage(item.id)} className="nav-btn"
+                    style={{
+                      background: page===item.id ? T.text : 'transparent',
+                      color: page===item.id ? T.bg : T.textTer,
+                      border: `1px solid ${page===item.id ? 'transparent' : T.borderSub}`,
+                      borderRadius:20, padding:'5px 14px', fontSize:12,
+                      fontWeight: page===item.id ? 600 : 400,
+                      cursor:'pointer', flexShrink:0, transition:'all 0.15s',
+                    }}>
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+
+            {/* Mobile: scrollable top nav (all pages) */}
+            {isMobile && (
+              <nav className="hide-scroll" style={{ display:'flex', gap:5, overflowX:'auto' }}>
+                {NAV.map(item => (
+                  <button key={item.id} onClick={() => setPage(item.id)} className="nav-btn"
+                    style={{
+                      background: page===item.id ? T.text : 'transparent',
+                      color: page===item.id ? T.bg : T.textTer,
+                      border: `1px solid ${page===item.id ? 'transparent' : T.borderSub}`,
+                      borderRadius:20, padding:'5px 12px', fontSize:12,
+                      fontWeight: page===item.id ? 600 : 400,
+                      cursor:'pointer', flexShrink:0, transition:'all 0.15s',
+                    }}>
+                    {item.label}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
+        </header>
+
+        {/* Main */}
+        <main ref={mainRef} style={{ flex:1, maxWidth:860, margin:'0 auto', padding: isMobile ? '14px 12px 84px' : '18px 18px 48px', width:'100%' }}>
+          <PageComponent/>
+        </main>
+
+        {/* Mobile bottom nav */}
+        {isMobile && (
+          <nav style={{
+            position:'fixed', bottom:0, left:0, right:0, zIndex:100,
+            background: dark ? 'oklch(15% 0.027 255 / 0.95)' : 'oklch(100% 0 0 / 0.95)',
+            backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)',
+            borderTop:`1px solid ${T.borderSub}`,
+            display:'flex', justifyContent:'space-around', alignItems:'center',
+            padding:'8px 8px max(8px, env(safe-area-inset-bottom))',
+          }}>
+            {MOBILE_NAV.map(id => {
+              const item = NAV.find(n => n.id === id);
+              const isActive = page === id;
+              return (
+                <button key={id} onClick={() => setPage(id)}
+                  style={{
+                    background:'none', border:'none', cursor:'pointer',
+                    display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+                    padding:'6px 16px', borderRadius:12,
+                    color: isActive ? T.violet : T.textTer,
+                    transition:'color 0.15s',
+                    flex:1,
+                  }}>
+                  <div style={{
+                    width:32, height:3, borderRadius:2,
+                    background: isActive ? T.violet : 'transparent',
+                    marginBottom:2, transition:'background 0.15s',
+                  }}/>
+                  <span style={{ fontSize:12, fontWeight: isActive ? 600 : 400 }}>{item.label}</span>
+                </button>
+              );
+            })}
+            {/* More menu button */}
+            <button onClick={() => {}}
+              style={{ background:'none', border:'none', cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:4, padding:'6px 16px', borderRadius:12, color:T.textTer, flex:1 }}>
+              <div style={{ width:32, height:3, borderRadius:2, background:'transparent', marginBottom:2 }}/>
+              <span style={{ fontSize:12 }}>更多</span>
+            </button>
+          </nav>
+        )}
+
+        {/* Footer (desktop only) */}
+        {!isMobile && (
+          <footer style={{ borderTop:`1px solid ${T.borderSub}`, padding:'14px 18px', textAlign:'center', fontSize:10.5, color:T.textTer, fontFamily:'DM Mono,monospace', letterSpacing:'0.06em' }}>
+            FILUM WEATHER · 天气爱好者专属 · Open-Meteo · 彩云天气
+          </footer>
+        )}
+      </div>
+    </ThemeCtx.Provider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
